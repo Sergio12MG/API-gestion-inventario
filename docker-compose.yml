@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  usuarios_db:
+    image: postgres:16-alpine
+    container_name: usuarios_db_container
+    environment:
+      POSTGRES_DB: usuarios_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: siberia
+    ports:
+      - "5432:5432" # Puerto para la DB de usuarios
+    volumes:
+      - usuarios_db_data:/var/lib/postgresql/data
+      - ./db_scripts/usuarios:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d usuarios_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  inventario_pedidos_db:
+    image: postgres:16-alpine
+    container_name: inventario_pedidos_db_container
+    environment:
+      POSTGRES_DB: inventario_pedidos_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: siberia
+    ports:
+      - "5433:5432" # Puerto diferente para la DB de inventario/pedidos en el host
+    volumes:
+      - inventario_pedidos_db_data:/var/lib/postgresql/data
+      - ./db_scripts/inventario_pedidos:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventario_pedidos_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: sistema_gestion_inventario_api
+    ports:
+      - "3000:3000"
+    env_file: # Add this line
+      - ./.env # Path to your .env file
+    environment:
+      DB_USUARIOS_HOST: usuarios_db
+      DB_USUARIOS_PORT: 5432
+      DB_USUARIOS_NAME: usuarios_db
+      DB_USUARIOS_USER: postgres
+      DB_USUARIOS_PASSWORD: siberia
+
+      DB_INVENTARIO_PEDIDOS_HOST: inventario_pedidos_db
+      DB_INVENTARIO_PEDIDOS_PORT: 5432
+      DB_INVENTARIO_PEDIDOS_NAME: inventario_pedidos_db
+      DB_INVENTARIO_PEDIDOS_USER: postgres
+      DB_INVENTARIO_PEDIDOS_PASSWORD: siberia
+
+      PORT: 3000
+      JWT_SECRET: 5c046cd39ef625bfb4c3822ed3a41cdccbca8da5441d3f0ac9a26a883c377f26e3fb6157375a8c5df5fe9554751874e77db9152bc97d24462442e80b6954590d
+    depends_on:
+      usuarios_db:
+        condition: service_healthy
+      inventario_pedidos_db:
+        condition: service_healthy
+    restart: on-failure
+    volumes:
+      - .:/app
+      - /app/node_modules
+
+volumes:
+  usuarios_db_data:
+  inventario_pedidos_db_data:
