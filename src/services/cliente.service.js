@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs'); // Encriptación de contraseñas
 
 // =================== SERVICIOS DE CLIENTE ===================
 // Crear un cliente
-exports.crearCliente = async (nombre_cliente, apellido_cliente, correo_cliente, celular_cliente, contrasena_cliente) => {
+exports.crearCliente = async (nombre_cliente, apellido_cliente, correo_cliente, celular_cliente, contrasena) => {
     try {
         const existeCliente = await Cliente.findOne({ where: { correo_cliente } }); // Para buscar un cliente por su correo
         if (existeCliente) {
@@ -11,7 +11,7 @@ exports.crearCliente = async (nombre_cliente, apellido_cliente, correo_cliente, 
         }
 
         // Encriptar la contraseña con un límite de 10 caracteres
-        const contrasenaEncriptada = await bcrypt.hash(contrasena_cliente, 10);
+        const contrasenaEncriptada = await bcrypt.hash(contrasena, 10);
 
         // Crear el nuevo cliente
         const nuevoCliente = await Cliente.create({
@@ -78,7 +78,7 @@ exports.actualizarCliente = async (id_cliente, datosActualizados) => {
         // Actualizar el cliente con los datos proporcionados
         const [filasActualizadas] = await Cliente.update(datosActualizados, {
             where: { id_cliente: id_cliente },
-            returning: true // Para obtener el registro actualizado
+            returning: true, // Para obtener el registro actualizado
         });
 
         if (filasActualizadas === 0) {
