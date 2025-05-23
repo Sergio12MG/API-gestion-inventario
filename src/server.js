@@ -26,9 +26,6 @@ async function startServer() {
         await sequelizeInventarioPedidos.authenticate();
         console.log('Conexión a inventario_pedidos_db (Sequelize) establecida con éxito.');
 
-        // Opcional: Sincronizar las bases de datos (uso con precaución en producción)
-        // Solo si necesitas que Sequelize cree/actualice las tablas.
-        // Dado que usas scripts SQL, esto es menos necesario o se usa con { force: false }
         await sequelizeUsuarios.sync({ force: false });
         console.log('Base de datos de usuarios sincronizada (si aplica).');
 
