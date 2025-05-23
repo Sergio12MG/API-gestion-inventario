@@ -3,15 +3,15 @@ const Producto = require('../models/producto.model'); // Modelo de Producto
 
 // =================== SERVICIOS DE CATEGORIA ===================
 // Crear una categoría
-exports.crearCategoria = async (nombre) => {
+exports.crearCategoria = async (nombre_categoria) => {
     try {
-        const existeCategoria = await Categoria.findOne({ where: { nombre_categoria: nombre } }); // Para evitar duplicados
+        const existeCategoria = await Categoria.findOne({ where: { nombre_categoria: nombre_categoria } }); // Para evitar duplicados
         if (existeCategoria) {
             throw new Error('La categoría ya existe.');
         }
 
         const nuevaCategoria = await Categoria.create({
-            nombre_categoria: nombre
+            nombre_categoria: nombre_categoria
         });
 
         return nuevaCategoria;
