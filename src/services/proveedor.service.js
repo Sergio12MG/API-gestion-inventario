@@ -3,9 +3,9 @@ const bcrypt = require('bcryptjs'); // Encriptación de contraseñas
 
 // =================== SERVICIOS DE PROVEEDOR ===================
 // Crear un proveedor
-exports.crearProveedor = async (nombre, apellido, correo, celular, contrasena) => {
+exports.crearProveedor = async (nombre_proveedor, apellido_proveedor, correo_proveedor, celular_proveedor, contrasena) => {
     try {
-        const existeProveedor = await Proveedor.findOne({ where: { correo } }); // Para buscar un proveedor por su correo
+        const existeProveedor = await Proveedor.findOne({ where: { correo_proveedor } }); // Para buscar un proveedor por su correo
         if (existeProveedor) {
             throw new Error('Este correo ya está registrado.');
         }
@@ -15,10 +15,10 @@ exports.crearProveedor = async (nombre, apellido, correo, celular, contrasena) =
 
         // Crear el nuevo proveedor
         const nuevoProveedor = await Proveedor.create({
-            nombre_proveedor: nombre,
-            apellido_proveedor: apellido,
-            correo_proveedor: correo,
-            celular_proveedor: celular,
+            nombre_proveedor: nombre_proveedor,
+            apellido_proveedor: apellido_proveedor,
+            correo_proveedor: correo_proveedor,
+            celular_proveedor: celular_proveedor,
             contrasena_proveedor: contrasenaEncriptada
         });
 
