@@ -36,7 +36,7 @@ CREATE TABLE producto (
 CREATE TABLE pedido (
     id_pedido SERIAL PRIMARY KEY,
     fecha_pedido TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    preciototal_pedido DECIMAL(10, 2) NOT NULL CHECK (precioTotal_pedido >= 0),
+    preciototal_pedido DECIMAL(10, 2) NOT NULL CHECK (preciototal_pedido >= 0),
     direccionentrega_pedido TEXT NOT NULL,
     id_cliente INTEGER NOT NULL, -- IMPORTANTE: Este es una FK LÓGICA a la tabla Cliente en 'usuarios_db'.
                                 -- No se puede definir como FK real a nivel de BD.
