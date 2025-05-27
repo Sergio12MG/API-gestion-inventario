@@ -16,23 +16,26 @@ require('./models/detalle_pedido.model');
 // Después de que todos los modelos están cargados, entonces se importa el archivo de asociaciones
 require('./models/associations');
 
+// Puerto del servidor
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
     try {
+        // Establecer conexiones a las bases de datos
         await sequelizeUsuarios.authenticate();
         console.log('Conexión a usuarios_db (Sequelize) establecida con éxito.');
 
         await sequelizeInventarioPedidos.authenticate();
         console.log('Conexión a inventario_pedidos_db (Sequelize) establecida con éxito.');
 
+        // Sincronizar los modelos con la base de datos
         await sequelizeUsuarios.sync({ force: false });
-        console.log('Base de datos de usuarios sincronizada (si aplica).');
+        console.log('Base de datos de usuarios sincronizada.');
 
         await sequelizeInventarioPedidos.sync({ force: false });
-        console.log('Base de datos de inventario y pedidos sincronizada (si aplica).');
+        console.log('Base de datos de inventario y pedidos sincronizada.');
 
-
+        // Iniciar el servidor
         app.listen(PORT, () => {
             console.log(`Servidor corriendo en http://localhost:${PORT}`);
         });
