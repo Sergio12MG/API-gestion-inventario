@@ -4,20 +4,28 @@ const productoService = require('../services/producto.service'); // Servicio de 
 // Para crear un producto
 exports.crearProducto = async (req, res) => {
     try {
-        const datosProducto = req.body;
+        const { nombre_producto, descripcion_producto, imagen_producto, cantidad_producto, preciounitario_producto, id_categoria, id_proveedor } = req.body;
         const idProveedorAutenticado = req.user.id; // ID del proveedor que está logueado
 
         // Validación: El id_proveedor en el cuerpo debe coincidir con el del usuario autenticado
-        if (datosProducto.id_proveedor !== idProveedorAutenticado) {
+        if (id_proveedor !== idProveedorAutenticado) {
             return res.status(403).json({ message: 'Acceso denegado. Solo puede crear productos asociados a su cuenta de proveedor.' });
         }
 
         // Validaciones básicas de entrada
-        if (!datosProducto.nombre_producto || !datosProducto.cantidad_producto || datosProducto.precioUnitario_producto === undefined || !datosProducto.id_categoria || !datosProducto.id_proveedor) {
+        if (!nombre_producto || cantidad_producto === undefined || preciounitario_producto === undefined || !id_categoria || !id_proveedor) {
             return res.status(400).json({ message: 'Nombre, cantidad, precio unitario, ID de categoría e ID de proveedor son campos requeridos.' });
         }
 
-        const nuevoProducto = await productoService.crearProducto(datosProducto);
+        const nuevoProducto = await productoService.crearProducto(
+            nombre_producto,
+            descripcion_producto,
+            imagen_producto,
+            cantidad_producto,
+            preciounitario_producto,
+            id_categoria,
+            id_proveedor
+        );
         res.status(201).json({ message: 'Producto creado con éxito.', producto: nuevoProducto });
     } catch (err) {
         if (err.message.includes('La categoría especificada no existe.')) {
@@ -35,7 +43,19 @@ exports.obtenerProductos = async (req, res) => {
     try {
         // No se necesita lógica de autorización aquí, ya que el middleware
         // authorizeRoles(['cliente', 'proveedor']) permite a ambos ver todos los productos.
-        const productos = await productoService.obtenerProductos();
+        
+        // Extraer los parámetros de consulta para los filtros
+        const filtros = {
+            id_categoria: req.query.id_categoria,
+            id_proveedor: req.query.id_proveedor,
+            nombre_producto: req.query.nombre_producto,
+            min_precio: req.query.min_precio ? parseFloat(req.query.min_precio) : undefined,
+            max_precio: req.query.max_precio ? parseFloat(req.query.max_precio) : undefined,
+            min_cantidad: req.query.min_cantidad ? parseInt(req.query.min_cantidad) : undefined,
+            max_cantidad: req.query.max_cantidad ? parseInt(req.query.max_cantidad) : undefined,
+        };
+        
+        const productos = await productoService.obtenerProductos(filtros);
         res.status(200).json(productos);
     } catch (err) {
         res.status(500).json({ message: err.message });

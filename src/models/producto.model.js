@@ -29,7 +29,7 @@ const Producto = sequelizeInventarioPedidos.define('Producto', {
             min: 0
         }
     },
-    precioUnitario_producto: {
+    preciounitario_producto: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         validate: {

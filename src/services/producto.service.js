@@ -6,10 +6,8 @@ const { Op } = require('sequelize'); // Importar Op para operadores de Sequelize
 
 // =================== SERVICIOS DE PRODUCTO ===================
 // Crear un producto
-exports.crearProducto = async (datosProducto) => {
+exports.crearProducto = async (nombre_producto, descripcion_producto, imagen_producto, cantidad_producto, preciounitario_producto, id_categoria, id_proveedor) => {
     try {
-        const { id_categoria, id_proveedor, ...restDatosProducto } = datosProducto;
-
         // 1. Validar la existencia de la Categoría (FK normal por estar en la misma DB)
         const categoriaExistente = await Categoria.findByPk(id_categoria);
         if (!categoriaExistente) {
@@ -25,7 +23,11 @@ exports.crearProducto = async (datosProducto) => {
 
         // 3. Crear el nuevo producto
         const nuevoProducto = await Producto.create({
-            ...restDatosProducto, // Datos como nombre, descripcion, etc.
+            nombre_producto: nombre_producto,
+            descripcion_producto: descripcion_producto,
+            imagen_producto: imagen_producto,
+            cantidad_producto: cantidad_producto,
+            preciounitario_producto: preciounitario_producto,
             id_categoria: id_categoria,
             id_proveedor: id_proveedor
         });
@@ -39,32 +41,31 @@ exports.crearProducto = async (datosProducto) => {
 // Obtener todos los productos (con filtros opcionales)
 exports.obtenerProductos = async (filtros = {}) => {
     try {
-        const { id_categoria, nombre_producto, limit, offset, ...otrosFiltros } = filtros; // Desestructurar filtros
-
+        const { id_categoria, id_proveedor, nombre_producto, min_precio, max_precio } = filtros;
         const whereClause = {};
 
         // Filtro por ID de categoría
         if (filtros.id_categoria) {
             whereClause.id_categoria = filtros.id_categoria;
         }
-
+        if (filtros.proveedor) {
+            whereClause.id_proveedor = filtros.id_proveedor;
+        }
         // Filtro por nombre de producto (búsqueda parcial insensible a mayúsculas/minúsculas)
         if (filtros.nombre_producto) {
             whereClause.nombre_producto = {
                 [Op.iLike]: `%${filtros.nombre_producto}%` // Búsqueda parcial y case-insensitive
             };
         }
-
-        // Otros filtros (otrosFiltros)
-        const options = {
-            where: whereClause,
-            include: [
-                { model: Categoria, attributes: ['nombre_categoria'] }
-            ],
-            limit: limit ? parseInt(limit, 10) : undefined, // Convertir a número entero
-            offset: offset ? parseInt(offset, 10) : undefined,
-            order: [['nombre_producto', 'ASC']] // Opcional: Para ordenar resultados
-        };
+        if (filtros.min_precio !== undefined || max_precio !== undefined) {
+            whereClause.preciounitario_producto = {};
+            if (filtros.min_precio !== undefined) {
+                whereClause.preciounitario_producto[Op.gte] = min_precio;
+            }
+            if (max_precio !== undefined) {
+                whereClause.preciounitario_producto[Op.lte] = max_precio;
+            }
+        }
 
         const productos = await Producto.findAll({
             where: whereClause,
@@ -139,7 +140,6 @@ exports.actualizarProducto = async (id_producto, datosActualizados) => {
         if (datosActualizados.id_proveedor && datosActualizados.id_proveedor !== producto.id_proveedor) {
             throw new Error('No es posible actualizar el proveedor asociado a un producto existente.');
         }
-        // =============================================================
 
         // Validar si se intenta actualizar la categoría (se toma id_categoría)
         if (datosActualizados.id_categoria && datosActualizados.id_categoria !== producto.id_categoria) {
