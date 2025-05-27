@@ -1,176 +1,204 @@
-const Pedido = require('../models/pedido.model'); // Modelo de Pedido
-const DetallePedido = require('../models/detalle_pedido.model'); // Modelo de DetallePedido
-const Producto = require('../models/producto.model'); // Para validar stock y precio
-const Cliente = require('../models/cliente.model'); // Para validar id_cliente (FK lógica)
-const Proveedor = require('../models/proveedor.model'); // Para validar id_proveedor (FK lógica)
-const Estado = require('../models/estado.model'); // Para incluir el estado del pedido
-const { sequelizeInventarioPedidos } = require('../config/db'); // Necesario para transacciones
+const Pedido = require('../models/pedido.model');
+const DetallePedido = require('../models/detalle_pedido.model');
+const Producto = require('../models/producto.model');
+const Cliente = require('../models/cliente.model'); // Asumiendo que esta es la instancia del modelo de la DB de usuarios
+const Proveedor = require('../models/proveedor.model'); // Asumiendo que esta es la instancia del modelo de la DB de usuarios
+const Estado = require('../models/estado.model');
+const { sequelizeInventarioPedidos } = require('../config/db');
+const { Op } = require('sequelize'); // Para los operadores de consulta
 
-// =================== SERVICIOS DE PEDIDO Y DETALLEPEDIDO ===================
+
+// Función auxiliar para obtener un pedido con sus relaciones completas
+async function obtenerPedidoConRelaciones(id_pedido, transaction = null) {
+    const pedido = await Pedido.findByPk(id_pedido, {
+        include: [
+            {
+                model: Estado,
+                attributes: ['id_estado', 'nombre_estado']
+            },
+            {
+                model: DetallePedido,
+                as: 'detalles',
+                include: [{
+                    model: Producto,
+                    attributes: ['id_producto', 'nombre_producto', 'preciounitario_producto', 'imagen_producto']
+                }],
+                attributes: ['id_detalle_pedido', 'cantidad', 'precio_unitario_al_momento']
+            }
+        ],
+        transaction: transaction
+    });
+
+    if (!pedido) {
+        return null;
+    }
+
+    // Obtener información del cliente y proveedor de la DB de usuarios
+    const clienteInfo = await Cliente.findByPk(pedido.id_cliente);
+    const proveedorInfo = await Proveedor.findByPk(pedido.id_proveedor);
+
+    const pedidoJSON = pedido.toJSON();
+    return {
+        ...pedidoJSON,
+        cliente: clienteInfo ? clienteInfo.toJSON() : null,
+        proveedor: proveedorInfo ? proveedorInfo.toJSON() : null
+    };
+}
+
+
+// =================== SERVICIOS DE PEDIDO ===================
+
 /**
  * Crea un nuevo pedido con sus detalles.
- * @param {object} datosPedido - Objeto con los datos del pedido (id_cliente, id_proveedor, direccionEntrega_pedido, productos).
- * @param {Array<object>} datosPedido.productos - Array de objetos { id_producto, cantidad_solicitada }.
- * @returns {object} El pedido creado con sus detalles.
+ * Valida productos, stock, y asigna el estado inicial "En espera".
+ * Solo para clientes.
+ * @param {object} datosPedido - { id_cliente, id_proveedor, direccionentrega_pedido, productos: [{ id_producto, cantidad }] }
+ * @returns {object} El pedido creado con sus detalles y relaciones.
  */
 exports.crearPedido = async (datosPedido) => {
-    // Usaremos una transacción para asegurar la atomicidad de la operación
     const t = await sequelizeInventarioPedidos.transaction();
     try {
-        const { id_cliente, id_proveedor, direccionEntrega_pedido, productos } = datosPedido;
+        const { id_cliente, id_proveedor, direccionentrega_pedido, productos } = datosPedido;
 
-        // 1. Validar existencia de Cliente (FK lógica)
-        const clienteExistente = await Cliente.findByPk(id_cliente);
+        // 1. Validar existencia de Cliente y Proveedor (FKs lógicas)
+        const [clienteExistente, proveedorExistente] = await Promise.all([
+            Cliente.findByPk(id_cliente),
+            Proveedor.findByPk(id_proveedor)
+        ]);
+
         if (!clienteExistente) {
             throw new Error('El cliente especificado no existe.');
         }
-
-        // 2. Validar existencia de Proveedor (FK lógica)
-        const proveedorExistente = await Proveedor.findByPk(id_proveedor);
         if (!proveedorExistente) {
             throw new Error('El proveedor especificado no existe.');
         }
 
-        let precioTotal_pedido = 0;
-        const detallesDelPedido = []; // Para almacenar los detalles a crear
-
-        // 3. Validar productos, stock y calcular precio total
-        if (!productos || productos.length === 0) {
-            throw new Error('El pedido debe contener al menos un producto.');
+        // 2. Obtener el ID del estado "En espera"
+        const estadoEnEspera = await Estado.findOne({
+            where: { nombre_estado: 'En espera' },
+            transaction: t // Incluir en la transacción
+        });
+        if (!estadoEnEspera) {
+            throw new Error('El estado "En espera" no se encontró. Asegúrese de que exista en la tabla de estados.');
         }
 
+        let preciototal_pedido = 0;
+        const detallesParaCrear = [];
+        const productosActualizarStock = []; // Para acumular productos a actualizar stock
+
+        // 3. Validar productos, stock y calcular precio total
         for (const item of productos) {
-            const producto = await Producto.findByPk(item.id_producto, { transaction: t });
+            const { id_producto, cantidad } = item;
+            if (!id_producto || !cantidad || cantidad <= 0) {
+                throw new Error('Cada producto en el pedido debe tener un id_producto válido y una cantidad mayor que cero.');
+            }
+
+            const producto = await Producto.findByPk(id_producto, { transaction: t });
 
             if (!producto) {
-                throw new Error(`Producto con ID ${item.id_producto} no encontrado.`);
+                throw new Error(`El producto con ID ${id_producto} no existe.`);
             }
-            if (item.cantidad_solicitada <= 0) {
-                throw new Error(`La cantidad solicitada para el producto ${producto.nombre_producto} debe ser mayor que cero.`);
+            if (producto.id_proveedor !== id_proveedor) { // El cliente solo puede pedir productos al proveedor del pedido
+                throw new Error(`El producto con ID ${id_producto} no pertenece al proveedor ${proveedorExistente.nombre_proveedor}.`);
             }
-            if (producto.cantidad_producto < item.cantidad_solicitada) {
-                throw new Error(`Stock insuficiente para el producto ${producto.nombre_producto}. Stock disponible: ${producto.cantidad_producto}`);
+            if (producto.cantidad_producto < cantidad) {
+                throw new Error(`Stock insuficiente para el producto: ${producto.nombre_producto}. Cantidad disponible: ${producto.cantidad_producto}.`);
             }
 
-            // Calcular el subtotal para este producto
-            const subtotalProducto = producto.precioUnitario_producto * item.cantidad_solicitada;
-            precioTotal_pedido += subtotalProducto;
-
-            // Añadir a los detalles del pedido
-            detallesDelPedido.push({
-                id_producto: item.id_producto,
-                cantidad_solicitada: item.cantidad_solicitada,
-                precio_unitario_historico: producto.precioUnitario_producto // Guardar el precio en el momento del pedido
+            // Registrar la disminución de stock
+            productosActualizarStock.push({
+                producto: producto,
+                cantidadADisminuir: cantidad
             });
 
-            // 4. Actualizar el stock del producto
-            await Producto.update(
-                { cantidad_producto: producto.cantidad_producto - item.cantidad_solicitada },
-                { where: { id_producto: producto.id_producto }, transaction: t }
+            const precioUnitarioAlMomento = parseFloat(producto.preciounitario_producto);
+            preciototal_pedido += precioUnitarioAlMomento * cantidad;
+
+            detallesParaCrear.push({
+                id_producto: id_producto,
+                cantidad: cantidad,
+                precio_unitario_al_momento: precioUnitarioAlMomento,
+            });
+        }
+
+        // 4. Crear el pedido principal
+        const nuevoPedido = await Pedido.create({
+            id_cliente: id_cliente,
+            id_proveedor: id_proveedor,
+            direccionentrega_pedido: direccionentrega_pedido,
+            preciototal_pedido: preciototal_pedido,
+            id_estado: estadoEnEspera.id_estado // Asignar el estado "En espera"
+        }, { transaction: t });
+
+        // 5. Asignar id_pedido a los detalles y crearlos
+        for (const detalle of detallesParaCrear) {
+            detalle.id_pedido = nuevoPedido.id_pedido;
+        }
+        await DetallePedido.bulkCreate(detallesParaCrear, { transaction: t });
+
+        // 6. Actualizar el stock de los productos
+        for (const { producto, cantidadADisminuir } of productosActualizarStock) {
+            await producto.update(
+                { cantidad_producto: producto.cantidad_producto - cantidadADisminuir },
+                { transaction: t }
             );
         }
 
-        // 5. Crear el pedido principal
-        const nuevoPedido = await Pedido.create({
-            id_cliente,
-            id_proveedor,
-            direccionEntrega_pedido,
-            precioTotal_pedido,
-            id_estado: 1 // ID para el estado de 'En espera'
-        }, { transaction: t });
+        await t.commit(); // Confirmar la transacción
 
-        // 6. Asignar el id_pedido a cada detalle y crearlos
-        for (const detalle of detallesDelPedido) {
-            detalle.id_pedido = nuevoPedido.id_pedido;
-        }
-        await DetallePedido.bulkCreate(detallesDelPedido, { transaction: t });
-
-        // Si todo va bien, hacer un commit de la transacción (aplicar los cambios en la DB)
-        await t.commit();
-
-        // Obtener el pedido completo con detalles y asociaciones para la respuesta
-        const pedidoCompleto = await Pedido.findByPk(nuevoPedido.id_pedido, {
-            include: [
-                {
-                    model: DetallePedido,
-                    include: {
-                        model: Producto,
-                        attributes: ['id_producto', 'nombre_producto', 'descripcion_producto', 'imagen_producto']
-                    }
-                },
-                {
-                    model: Estado,
-                    attributes: ['nombre_estado']
-                }
-            ]
-        });
-
-        // Enriquecer con datos de Cliente y Proveedor de la otra DB
-        const clienteInfo = await Cliente.findByPk(pedidoCompleto.id_cliente, {
-            attributes: ['id_cliente', 'nombre_cliente', 'apellido_cliente', 'correo_cliente', 'celular_cliente']
-        });
-        const proveedorInfo = await Proveedor.findByPk(pedidoCompleto.id_proveedor, {
-            attributes: ['id_proveedor', 'nombre_proveedor', 'apellido_proveedor', 'correo_proveedor', 'celular_proveedor']
-        });
-
-        const pedidoJSON = pedidoCompleto.toJSON();
-        return {
-            ...pedidoJSON,
-            cliente: clienteInfo ? clienteInfo.toJSON() : null,
-            proveedor: proveedorInfo ? proveedorInfo.toJSON() : null
-        };
+        // Retornar el pedido completo (con relaciones)
+        return await obtenerPedidoConRelaciones(nuevoPedido.id_pedido);
 
     } catch (err) {
-        // Si hay algún error, hacer un rollback para la transacción (revertirla)
-        await t.rollback();
+        await t.rollback(); // Revertir la transacción en caso de error
         throw new Error(`Error al crear el pedido: ${err.message}`);
     }
 };
 
 /**
- * Obtiene todos los pedidos, con filtros opcionales.
- * @param {object} filtros - Objeto con filtros (id_cliente, id_proveedor, id_estado).
- * @returns {Array<object>} Lista de pedidos.
+ * Obtiene todos los pedidos, aplicando filtros por rol de usuario.
+ * @param {number} userId - ID del usuario autenticado.
+ * @param {string} userRole - Rol del usuario autenticado ('cliente' o 'proveedor').
+ * @returns {Array<object>} Lista de pedidos con sus detalles y relaciones.
  */
-exports.obtenerPedidos = async (filtros = {}) => {
+exports.obtenerPedidos = async (userId, userRole) => {
     try {
-        const whereClause = {};
-        if (filtros.id_cliente) {
-            whereClause.id_cliente = filtros.id_cliente;
-        }
-        if (filtros.id_proveedor) {
-            whereClause.id_proveedor = filtros.id_proveedor;
-        }
-        if (filtros.id_estado) {
-            whereClause.id_estado = filtros.id_estado;
+        let whereCondition = {};
+
+        if (userRole === 'cliente') {
+            whereCondition.id_cliente = userId;
+        } else if (userRole === 'proveedor') {
+            whereCondition.id_proveedor = userId;
+        } else {
+            // Un rol no autorizado no debería llegar aquí si el middleware es correcto,
+            // pero se incluye como precaución.
+            throw new Error('Acceso denegado. Rol no autorizado para ver pedidos.');
         }
 
         const pedidos = await Pedido.findAll({
-            where: whereClause,
+            where: whereCondition,
             include: [
                 {
-                    model: DetallePedido,
-                    include: {
-                        model: Producto,
-                        attributes: ['id_producto', 'nombre_producto', 'descripcion_producto', 'imagen_producto']
-                    }
+                    model: Estado,
+                    attributes: ['id_estado', 'nombre_estado']
                 },
                 {
-                    model: Estado,
-                    attributes: ['nombre_estado']
+                    model: DetallePedido,
+                    as: 'detalles',
+                    include: [{
+                        model: Producto,
+                        attributes: ['id_producto', 'nombre_producto', 'preciounitario_producto', 'imagen_producto']
+                    }],
+                    attributes: ['id_detalle_pedido', 'cantidad', 'precio_unitario_al_momento']
                 }
             ],
-            order: [['fecha_pedido', 'DESC']] // Ordenar por fecha del más reciente
+            order: [['fecha_pedido', 'DESC']]
         });
 
-        // Enriquecer con datos de Cliente y Proveedor de la otra DB
-        const pedidosCompletos = await Promise.all(pedidos.map(async (pedido) => {
-            const clienteInfo = await Cliente.findByPk(pedido.id_cliente, {
-                attributes: ['id_cliente', 'nombre_cliente', 'apellido_cliente', 'correo_cliente', 'celular_cliente']
-            });
-            const proveedorInfo = await Proveedor.findByPk(pedido.id_proveedor, {
-                attributes: ['id_proveedor', 'nombre_proveedor', 'apellido_proveedor', 'correo_proveedor', 'celular_proveedor']
-            });
+        // Para cada pedido, obtener la información del cliente y proveedor de la otra DB
+        const pedidosConUsuarios = await Promise.all(pedidos.map(async (pedido) => {
+            const clienteInfo = await Cliente.findByPk(pedido.id_cliente);
+            const proveedorInfo = await Proveedor.findByPk(pedido.id_proveedor);
 
             const pedidoJSON = pedido.toJSON();
             return {
@@ -180,46 +208,54 @@ exports.obtenerPedidos = async (filtros = {}) => {
             };
         }));
 
-        return pedidosCompletos;
+        return pedidosConUsuarios;
     } catch (err) {
         throw new Error(`Error al obtener los pedidos: ${err.message}`);
     }
 };
 
 /**
- * Obtiene un pedido por su ID.
- * @param {number} id_pedido - ID del pedido a buscar.
- * @returns {object} El pedido encontrado con sus detalles.
+ * Obtiene un pedido específico por ID, aplicando filtros por rol de usuario.
+ * @param {number} id_pedido - ID del pedido a obtener.
+ * @param {number} userId - ID del usuario autenticado.
+ * @param {string} userRole - Rol del usuario autenticado ('cliente' o 'proveedor').
+ * @returns {object} El pedido con sus detalles y relaciones.
  */
-exports.obtenerPedidoPorId = async (id_pedido) => {
+exports.obtenerPedidoPorId = async (id_pedido, userId, userRole) => {
     try {
         const pedido = await Pedido.findByPk(id_pedido, {
             include: [
                 {
-                    model: DetallePedido,
-                    include: {
-                        model: Producto,
-                        attributes: ['id_producto', 'nombre_producto', 'descripcion_producto', 'imagen_producto']
-                    }
+                    model: Estado,
+                    attributes: ['id_estado', 'nombre_estado']
                 },
                 {
-                    model: Estado,
-                    attributes: ['nombre_estado']
+                    model: DetallePedido,
+                    as: 'detalles',
+                    include: [{
+                        model: Producto,
+                        attributes: ['id_producto', 'nombre_producto', 'preciounitario_producto', 'imagen_producto']
+                    }],
+                    attributes: ['id_detalle_pedido', 'cantidad', 'precio_unitario_al_momento']
                 }
             ]
         });
 
         if (!pedido) {
-            throw new Error(`El pedido con ID ${id_pedido} no existe`);
+            throw new Error('Pedido no encontrado.');
         }
 
-        // Enriquecer con datos de Cliente y Proveedor de la otra DB
-        const clienteInfo = await Cliente.findByPk(pedido.id_cliente, {
-            attributes: ['id_cliente', 'nombre_cliente', 'apellido_cliente', 'correo_cliente', 'celular_cliente']
-        });
-        const proveedorInfo = await Proveedor.findByPk(pedido.id_proveedor, {
-            attributes: ['id_proveedor', 'nombre_proveedor', 'apellido_proveedor', 'correo_proveedor', 'celular_proveedor']
-        });
+        // Lógica de autorización: el cliente/proveedor solo ve sus propios pedidos
+        if (userRole === 'cliente' && pedido.id_cliente !== userId) {
+            throw new Error('Acceso denegado. Este pedido no te pertenece.');
+        }
+        if (userRole === 'proveedor' && pedido.id_proveedor !== userId) {
+            throw new Error('Acceso denegado. Este pedido no te pertenece.');
+        }
+
+        // Obtener información del cliente y proveedor de la DB de usuarios
+        const clienteInfo = await Cliente.findByPk(pedido.id_cliente);
+        const proveedorInfo = await Proveedor.findByPk(pedido.id_proveedor);
 
         const pedidoJSON = pedido.toJSON();
         return {
@@ -227,98 +263,72 @@ exports.obtenerPedidoPorId = async (id_pedido) => {
             cliente: clienteInfo ? clienteInfo.toJSON() : null,
             proveedor: proveedorInfo ? proveedorInfo.toJSON() : null
         };
+
     } catch (err) {
         throw new Error(`Error al obtener el pedido: ${err.message}`);
     }
 };
 
 /**
- * Actualiza el estado de un pedido.
+ * Actualiza el estado de un pedido. Solo el proveedor puede realizar esta acción.
  * @param {number} id_pedido - ID del pedido a actualizar.
- * @param {object} datosActualizados - Objeto con los datos a actualizar (id_estado, direccionEntrega_pedido).
- * @returns {object} El pedido actualizado.
+ * @param {number} id_proveedor_autenticado - ID del proveedor que realiza la actualización.
+ * @param {number} nuevo_id_estado - El nuevo ID del estado a asignar.
+ * @returns {object} El pedido actualizado con sus detalles y relaciones.
  */
-exports.actualizarPedido = async (id_pedido, datosActualizados) => {
+exports.actualizarEstadoPedido = async (id_pedido, id_proveedor_autenticado, nuevo_id_estado) => {
+    const t = await sequelizeInventarioPedidos.transaction();
     try {
-        const pedido = await Pedido.findByPk(id_pedido);
+        const pedido = await Pedido.findByPk(id_pedido, { transaction: t });
+
         if (!pedido) {
-            throw new Error('El pedido no existe.');
+            throw new Error('Pedido no encontrado.');
         }
 
-        // No permitir actualizar id_cliente ni id_proveedor una vez creado el pedido
-        if (datosActualizados.id_cliente && datosActualizados.id_cliente !== pedido.id_cliente) {
-            throw new Error('No es posible cambiar el cliente de un pedido existente.');
-        }
-        if (datosActualizados.id_proveedor && datosActualizados.id_proveedor !== pedido.id_proveedor) {
-            throw new Error('No es posible cambiar el proveedor de un pedido existente.');
-        }
-        // No permitir actualizar precioTotal_pedido directamente
-        if (datosActualizados.precioTotal_pedido) {
-            throw new Error('El precio total del pedido se calcula automáticamente y no puede actualizarse directamente.');
+        // 1. Autorización: Verificar que el pedido pertenezca al proveedor autenticado
+        if (pedido.id_proveedor !== id_proveedor_autenticado) {
+            throw new Error('Acceso denegado. Solo puede actualizar el estado de sus propios pedidos.');
         }
 
-        // Validar id_estado si se intenta actualizar
-        if (datosActualizados.id_estado && datosActualizados.id_estado !== pedido.id_estado) {
-            const estadoExistente = await Estado.findByPk(datosActualizados.id_estado);
-            if (!estadoExistente) {
-                throw new Error('El estado especificado no existe.');
-            }
+        // 2. Validar que el nuevo estado sea válido y diferente al actual
+        const nuevoEstado = await Estado.findByPk(nuevo_id_estado, { transaction: t });
+        if (!nuevoEstado) {
+            throw new Error('El ID de estado proporcionado no es válido.');
+        }
+        if (pedido.id_estado === nuevo_id_estado) {
+            throw new Error('El pedido ya tiene este estado.');
         }
 
-        // Eliminar campos no actualizables antes de pasar a Sequelize
-        const { id_cliente, id_proveedor, precioTotal_pedido, ...camposActualizables } = datosActualizados;
-
-        const [filasActualizadas] = await Pedido.update(camposActualizables, {
-            where: { id_pedido: id_pedido },
-            returning: true
-        });
-
-        if (filasActualizadas === 0) {
-            throw new Error('No se pudo actualizar el pedido.');
+        const estadoActual = await Estado.findByPk(pedido.id_estado, { transaction: t });
+        if (estadoActual.nombre_estado === 'Enviado' && nuevoEstado.nombre_estado === 'En espera') {
+             throw new Error('No se puede cambiar el estado de "Enviado" a "En espera".');
         }
 
-        // Obtener y devolver el pedido actualizado con sus asociaciones
-        const pedidoActualizado = await Pedido.findByPk(id_pedido, {
-            include: [
-                {
-                    model: DetallePedido,
-                    include: {
-                        model: Producto,
-                        attributes: ['id_producto', 'nombre_producto', 'descripcion_producto', 'imagen_producto']
-                    }
-                },
-                {
-                    model: Estado,
-                    attributes: ['nombre_estado']
-                }
-            ]
-        });
+        // 3. Actualizar el estado del pedido
+        await Pedido.update(
+            { id_estado: nuevo_id_estado },
+            { where: { id_pedido: id_pedido }, transaction: t }
+        );
 
-        const clienteInfo = await Cliente.findByPk(pedidoActualizado.id_cliente, {
-            attributes: ['id_cliente', 'nombre_cliente', 'apellido_cliente', 'correo_cliente', 'celular_cliente']
-        });
-        const proveedorInfo = await Proveedor.findByPk(pedidoActualizado.id_proveedor, {
-            attributes: ['id_proveedor', 'nombre_proveedor', 'apellido_proveedor', 'correo_proveedor', 'celular_proveedor']
-        });
+        await t.commit();
 
-        const pedidoJSON = pedidoActualizado.toJSON();
-        return {
-            ...pedidoJSON,
-            cliente: clienteInfo ? clienteInfo.toJSON() : null,
-            proveedor: proveedorInfo ? proveedorInfo.toJSON() : null
-        };
+        // Devolver el pedido actualizado con todas sus relaciones
+        return await obtenerPedidoConRelaciones(id_pedido);
 
     } catch (err) {
-        throw new Error(`Error al actualizar el pedido: ${err.message}`);
+        await t.rollback();
+        throw new Error(`Error al actualizar el estado del pedido: ${err.message}`);
     }
 };
 
 /**
  * Elimina un pedido y sus detalles asociados.
+ * Solo los clientes pueden eliminar sus propios pedidos.
  * @param {number} id_pedido - ID del pedido a eliminar.
+ * @param {number} id_cliente_autenticado - ID del cliente que realiza la eliminación.
  * @returns {object} Mensaje de confirmación.
  */
-exports.eliminarPedido = async (id_pedido) => {
+exports.eliminarPedido = async (id_pedido, id_cliente_autenticado) => {
     const t = await sequelizeInventarioPedidos.transaction();
     try {
         const pedido = await Pedido.findByPk(id_pedido, { transaction: t });
@@ -326,27 +336,71 @@ exports.eliminarPedido = async (id_pedido) => {
             throw new Error('El pedido no existe.');
         }
 
-        // 1. Eliminar los detalles del pedido primero
+        // 1. Autorización: Verificar que el pedido pertenezca al cliente autenticado
+        if (pedido.id_cliente !== id_cliente_autenticado) {
+            throw new Error('Acceso denegado. Solo puede eliminar sus propios pedidos.');
+        }
+
+        // Opcional: No permitir eliminar pedidos ya enviados
+        const estadoPedido = await Estado.findByPk(pedido.id_estado, { transaction: t });
+        if (estadoPedido.nombre_estado === 'Enviado') {
+            throw new Error('No se puede eliminar un pedido que ya ha sido enviado.');
+        }
+
+
+        // 2. Eliminar los detalles del pedido primero
         await DetallePedido.destroy({
             where: { id_pedido: id_pedido },
             transaction: t
         });
 
-        // 2. Eliminar el pedido principal
+        // 3. Eliminar el pedido principal
         const filasEliminadas = await Pedido.destroy({
             where: { id_pedido: id_pedido },
             transaction: t
         });
 
         if (filasEliminadas === 0) {
-            // Esto debería ser capturado por la verificación inicial de pedido existente, pero por precaución, se verifica nuevamente.
             throw new Error('No se pudo eliminar el pedido.');
         }
 
         await t.commit();
         return { message: 'Pedido eliminado correctamente.' };
+
     } catch (err) {
         await t.rollback();
         throw new Error(`Error al eliminar el pedido: ${err.message}`);
+    }
+};
+
+// =================== SERVICIOS DE ESTADO ===================
+
+/**
+ * Obtiene todos los estados disponibles.
+ * @returns {Array<object>} Lista de estados.
+ */
+exports.obtenerEstados = async () => {
+    try {
+        const estados = await Estado.findAll();
+        return estados;
+    } catch (err) {
+        throw new Error(`Error al obtener los estados: ${err.message}`);
+    }
+};
+
+/**
+ * Obtiene un estado por su ID.
+ * @param {number} id_estado - ID del estado.
+ * @returns {object} El estado.
+ */
+exports.obtenerEstadoPorId = async (id_estado) => {
+    try {
+        const estado = await Estado.findByPk(id_estado);
+        if (!estado) {
+            throw new Error('Estado no encontrado.');
+        }
+        return estado;
+    } catch (err) {
+        throw new Error(`Error al obtener el estado: ${err.message}`);
     }
 };

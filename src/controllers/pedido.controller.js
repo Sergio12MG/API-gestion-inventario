@@ -1,4 +1,5 @@
 const pedidoService = require('../services/pedido.service');
+const Estado = require('../models/estado.model'); // Se usa para obtener el ID de estado
 
 // ==================== CONTROLADORES PARA PEDIDO ====================
 /**
@@ -16,7 +17,7 @@ exports.crearPedido = async (req, res) => {
         }
 
         // Validaciones básicas de entrada
-        if (!datosPedido.id_cliente || !datosPedido.id_proveedor || !datosPedido.direccionEntrega_pedido || !datosPedido.productos || datosPedido.productos.length === 0) {
+        if (!datosPedido.id_cliente || !datosPedido.id_proveedor || !datosPedido.direccionentrega_pedido || !datosPedido.productos || datosPedido.productos.length === 0) {
             return res.status(400).json({ message: 'Cliente, proveedor, dirección de entrega y al menos un producto son requeridos para el pedido.' });
         }
 
@@ -24,131 +25,94 @@ exports.crearPedido = async (req, res) => {
         res.status(201).json({ message: 'Pedido creado con éxito.', pedido: nuevoPedido });
     } catch (err) {
         // Manejo de errores específicos del servicio de pedido
-        if (err.message.includes('El cliente especificado no existe.') ||
-            err.message.includes('El proveedor especificado no existe.') ||
-            err.message.includes('El producto') && err.message.includes('no existe.') ||
-            err.message.includes('cantidad solicitada excede el stock disponible.') ||
-            err.message.includes('La cantidad del producto debe ser mayor que cero.')) {
-            return res.status(400).json({ message: err.message }); // 400 Bad Request
+        if (err.message.includes('cliente especificado no existe') ||
+            err.message.includes('proveedor especificado no existe') ||
+            err.message.includes('stock insuficiente') ||
+            err.message.includes('producto no existe') ||
+            err.message.includes('producto con ID') || // Para el error de producto no pertenece al proveedor
+            err.message.includes('cantidad mayor que cero')) {
+            return res.status(400).json({ message: err.message });
         }
-        res.status(500).json({ message: err.message });
+        if (err.message.includes('estado "En espera" no se encontró')) {
+            return res.status(500).json({ message: err.message }); // Error de configuración interna
+        }
+        res.status(500).json({ message: err.message }); // Otros errores del servidor
     }
 };
 
 /**
- * Obtiene todos los pedidos.
- * La visibilidad depende del rol: cliente ve los suyos, proveedor ve los suyos.
+ * Obtiene todos los pedidos visibles para el usuario autenticado.
  */
 exports.obtenerPedidos = async (req, res) => {
     try {
         const userId = req.user.id;
         const userRole = req.user.rol;
 
-        let pedidos;
-        if (userRole === 'cliente') {
-            pedidos = await pedidoService.obtenerPedidosPorCliente(userId);
-        } else if (userRole === 'proveedor') {
-            pedidos = await pedidoService.obtenerPedidosPorProveedor(userId);
-        } else {
-            return res.status(403).json({ message: 'Acceso denegado. Rol no autorizado para ver pedidos.' });
-        }
-
+        const pedidos = await pedidoService.obtenerPedidos(userId, userRole);
         res.status(200).json(pedidos);
     } catch (err) {
+        if (err.message.includes('Acceso denegado. Rol no autorizado')) {
+            return res.status(403).json({ message: err.message });
+        }
         res.status(500).json({ message: err.message });
     }
 };
 
 /**
- * Obtiene un pedido por su ID.
- * La visibilidad depende del rol: cliente ve los suyos, proveedor ve los suyos.
+ * Obtiene un pedido específico por ID, verificando la pertenencia al usuario.
  */
 exports.obtenerPedidoPorId = async (req, res) => {
     try {
-        const { id } = req.params; // ID del pedido solicitado
-        const userId = req.user.id; // ID del usuario autenticado (del token)
-        const userRole = req.user.rol; // Rol del usuario autenticado (del token)
+        const { id } = req.params;
+        const userId = req.user.id;
+        const userRole = req.user.rol;
 
-        const pedido = await pedidoService.obtenerPedidoPorId(id);
-
-        if (!pedido) {
-            return res.status(404).json({ message: 'Pedido no encontrado.' });
-        }
-
-        // Lógica de autorización basada en el rol y la propiedad del pedido
-        if (userRole === 'cliente' && pedido.id_cliente !== userId) {
-            return res.status(403).json({ message: 'Acceso denegado. Solo puede ver sus propios pedidos.' });
-        }
-        if (userRole === 'proveedor' && pedido.id_proveedor !== userId) {
-            return res.status(403).json({ message: 'Acceso denegado. Solo puede ver pedidos asociados a su proveedor.' });
-        }
-
+        const pedido = await pedidoService.obtenerPedidoPorId(id, userId, userRole);
         res.status(200).json(pedido);
     } catch (err) {
+        if (err.message.includes('Pedido no encontrado')) {
+            return res.status(404).json({ message: err.message });
+        }
+        if (err.message.includes('Acceso denegado. Este pedido no te pertenece')) {
+            return res.status(403).json({ message: err.message });
+        }
         res.status(500).json({ message: err.message });
     }
 };
 
 /**
- * Actualiza un pedido.
- * El cliente puede cambiar dirección. El proveedor puede cambiar estado.
+ * Actualiza el estado de un pedido (solo proveedores).
  */
 exports.actualizarPedido = async (req, res) => {
     try {
-        const { id } = req.params; // ID del pedido a actualizar
+        const { id } = req.params;
+        const { id_estado } = req.body; // Solo esperamos id_estado
         const userId = req.user.id; // ID del usuario autenticado
         const userRole = req.user.rol; // Rol del usuario autenticado
-        const datosActualizados = req.body; // Datos a actualizar
 
-        const pedidoExistente = await pedidoService.obtenerPedidoPorId(id);
-        if (!pedidoExistente) {
-            return res.status(404).json({ message: 'Pedido no encontrado.' });
-        }
-
-        let pedidoActualizado;
-
+        // Lógica de autorización y validación de campos a nivel de controlador
         if (userRole === 'cliente') {
-            // Un cliente solo puede actualizar su propio pedido
-            if (pedidoExistente.id_cliente !== userId) {
-                return res.status(403).json({ message: 'Acceso denegado. Solo puede actualizar sus propios pedidos.' });
+            return res.status(403).json({ message: 'Acceso denegado. Los clientes solo pueden crear y eliminar pedidos.' });
+        }
+        if (userRole === 'proveedor') {
+            if (!id_estado) {
+                return res.status(400).json({ message: 'El ID de estado es requerido para actualizar el pedido.' });
             }
-
-            // Validar qué campos puede actualizar un cliente (dirección)
-            const permitidosCliente = ['direccionEntrega_pedido']; // Campos que un cliente puede actualizar
-            const camposInvalidos = Object.keys(datosActualizados).filter(field => !permitidosCliente.includes(field));
-
-            if (camposInvalidos.length > 0) {
-                return res.status(400).json({ message: `Un cliente no puede actualizar los siguientes campos: ${camposInvalidos.join(', ')}.` });
-            }
-
-            pedidoActualizado = await pedidoService.actualizarPedido(id, datosActualizados);
-
-        } else if (userRole === 'proveedor') {
-            // Un proveedor solo puede actualizar pedidos asociados a él
-            if (pedidoExistente.id_proveedor !== userId) {
-                return res.status(403).json({ message: 'Acceso denegado. Solo puede actualizar pedidos asociados a su proveedor.' });
-            }
-
-            // Validar qué campos puede actualizar un proveedor (id_estado)
-            const permitidosProveedor = ['id_estado']; // Campos que un proveedor puede actualizar
-            const camposInvalidos = Object.keys(datosActualizados).filter(field => !permitidosProveedor.includes(field));
-
-            if (camposInvalidos.length > 0) {
-                return res.status(400).json({ message: `Un proveedor no puede actualizar los siguientes campos: ${camposInvalidos.join(', ')}.` });
-            }
-
-            pedidoActualizado = await pedidoService.actualizarPedido(id, datosActualizados);
-
-        } else {
-            return res.status(403).json({ message: 'Acceso denegado. Rol no autorizado para actualizar pedidos.' });
+            // Delegar al servicio la actualización del estado
+            const pedidoActualizado = await pedidoService.actualizarEstadoPedido(id, userId, id_estado);
+            return res.status(200).json({ message: 'Estado del pedido actualizado con éxito.', pedido: pedidoActualizado });
         }
 
-        res.status(200).json({ message: 'Pedido actualizado con éxito.', pedido: pedidoActualizado });
+        return res.status(403).json({ message: 'Acceso denegado. Rol no autorizado para actualizar pedidos.' });
+
     } catch (err) {
-        if (err.message.includes('Pedido no encontrado.') || err.message.includes('No se pudo actualizar el pedido.')) {
+        if (err.message.includes('Pedido no encontrado')) {
             return res.status(404).json({ message: err.message });
         }
-        if (err.message.includes('El estado especificado no existe.')) {
+        if (err.message.includes('Acceso denegado') || err.message.includes('Solo puede actualizar el estado de sus propios pedidos')) {
+            return res.status(403).json({ message: err.message });
+        }
+        if (err.message.includes('ID de estado proporcionado no es válido') || err.message.includes('ya tiene este estado') || err.message.includes('No se puede cambiar el estado')) {
             return res.status(400).json({ message: err.message });
         }
         res.status(500).json({ message: err.message });
@@ -156,8 +120,7 @@ exports.actualizarPedido = async (req, res) => {
 };
 
 /**
- * Elimina un pedido.
- * Solo el cliente que lo creó y si el estado lo permite.
+ * Elimina un pedido (solo clientes).
  */
 exports.eliminarPedido = async (req, res) => {
     try {
@@ -165,20 +128,10 @@ exports.eliminarPedido = async (req, res) => {
         const userId = req.user.id; // ID del usuario autenticado
         const userRole = req.user.rol; // Rol del usuario autenticado
 
-        const pedidoExistente = await pedidoService.obtenerPedidoPorId(id);
-        if (!pedidoExistente) {
-            return res.status(404).json({ message: 'Pedido no encontrado.' });
-        }
-
         // Lógica de autorización: Solo el cliente dueño puede eliminarlo
         if (userRole === 'cliente') {
-            if (pedidoExistente.id_cliente !== userId) {
-                return res.status(403).json({ message: 'Acceso denegado. Solo puede eliminar sus propios pedidos.' });
-            }
-
-            await pedidoService.eliminarPedido(id);
+            await pedidoService.eliminarPedido(id, userId); // Pasa el ID del cliente para la autorización
             res.status(200).json({ message: 'Pedido eliminado con éxito.' });
-
         } else if (userRole === 'proveedor') {
             // Los proveedores no deberían poder eliminar pedidos, solo gestionarlos
             return res.status(403).json({ message: 'Acceso denegado. Los proveedores no pueden eliminar pedidos.' });
@@ -186,8 +139,14 @@ exports.eliminarPedido = async (req, res) => {
              return res.status(403).json({ message: 'Acceso denegado. Rol no autorizado para eliminar pedidos.' });
         }
     } catch (err) {
-        if (err.message.includes('El pedido no existe o no se pudo eliminar.')) {
+        if (err.message.includes('El pedido no existe') || err.message.includes('No se pudo eliminar el pedido')) {
             return res.status(404).json({ message: err.message });
+        }
+        if (err.message.includes('Acceso denegado. Solo puede eliminar sus propios pedidos')) {
+            return res.status(403).json({ message: err.message });
+        }
+        if (err.message.includes('No se puede eliminar un pedido que ya ha sido enviado')) {
+             return res.status(409).json({ message: err.message }); // Conflict si intenta eliminar un pedido enviado
         }
         res.status(500).json({ message: err.message });
     }

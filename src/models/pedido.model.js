@@ -14,14 +14,14 @@ const Pedido = sequelizeInventarioPedidos.define('Pedido', {
         allowNull: false,
         defaultValue: DataTypes.NOW
     },
-    precioTotal_pedido: {
+    preciototal_pedido: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         validate: {
             min: 0
         }
     },
-    direccionEntrega_pedido: {
+    direccionentrega_pedido: {
         type: DataTypes.STRING,
         allowNull: false
     },
