@@ -1,6 +1,8 @@
 const { sequelizeUsuarios, sequelizeInventarioPedidos } = require('./config/db');
 const app = require('./app');
 const dotenv = require('dotenv');
+const path = require('path');
+const express = require('express');
 
 dotenv.config(); // Cargar las variables de entorno
 
@@ -16,8 +18,23 @@ require('./models/detalle_pedido.model');
 // Después de que todos los modelos están cargados, entonces se importa el archivo de asociaciones
 require('./models/associations');
 
-// Puerto del servidor
-const PORT = process.env.PORT || 3000;
+// ======================================================
+// Configuración para servir la aplicación Vue (frontend)
+// ======================================================
+// 1. Servir los archivos estáticos de la aplicación Vue
+const frontendPath = path.join(__dirname, '..', 'frontend-inventario-pedidos', 'dist');
+app.use(express.static(frontendPath));
+
+// 2. Para todas las demás rutas (que no son API ni archivos estáticos existentes),
+// devuelve el index.html de la aplicación Vue (para el modo history del router)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
+// ======================================================
+// Configuración para iniciar el servidor de Express
+// ======================================================
+const PORT = process.env.PORT || 3000; // Puerto del servidor
 
 async function startServer() {
     try {
