@@ -1,3 +1,4 @@
+/* 
 const authService = require('../services/auth.service'); // Importación del servicio de autenticación
 
 // Controlador para el inicio de sesión de un Cliente
@@ -30,6 +31,29 @@ exports.loginProveedor = async (req, res) => {
             res.status(401).json({ message: err.message }); // 401 Unauthorized para credenciales incorrectas
         } else {
             res.status(500).json({ message: err.message }); // 500 Internal Server Error para otros errores
+        }
+    }
+};
+
+*/
+
+// ====================================================================================================
+const authService = require('../services/nuevoauth.service');
+
+// Controlador para el inicio de sesión unificado
+exports.login = async (req, res) => {
+    const { correo, contrasena } = req.body;
+
+    try {
+        const { token, user } = await authService.loginUser(correo, contrasena); // <-- Cambio aquí
+
+        res.status(200).json({ message: 'Inicio de sesión exitoso.', token, user });
+
+    } catch (err) {
+        if (err.message.includes('Credenciales inválidas')) {
+            res.status(401).json({ message: err.message });
+        } else {
+            res.status(500).json({ message: err.message });
         }
     }
 };

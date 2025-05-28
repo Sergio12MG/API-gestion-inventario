@@ -1,4 +1,5 @@
-const authService = require('../services/auth.service'); // Importamos el servicio de autenticación para verificar el token
+const authService = require('../services/nuevoauth.service'); // Importamos el servicio de autenticación unificado para verificar el token
+// const authService = require('../services/auth.service'); // Servicio de autenticación por separado para clientes y proveedores
 
 /**
  * Middleware para autenticar solicitudes usando JWT.
