@@ -72,7 +72,7 @@ exports.obtenerProductos = async (filtros = {}) => {
             include: [
                 {
                     model: Categoria,
-                    attributes: ['nombre_categoria'] // Solo el nombre de la categoría
+                    attributes: ['id_categoria', 'nombre_categoria']
                 }
             ]
         });
@@ -103,7 +103,7 @@ exports.obtenerProductoPorId = async (id_producto) => {
             include: [
                 {
                     model: Categoria,
-                    attributes: ['nombre_categoria']
+                    attributes: ['id_categoria', 'nombre_categoria']
                 }
             ]
         });
