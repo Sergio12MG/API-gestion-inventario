@@ -102,3 +102,47 @@ exports.eliminarProveedor = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+
+// ==================== CONTROLADORES PARA ESTADÍSTICAS ====================
+// Para obtener la cantidad de productos por proveedor
+exports.getCantidadProductos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        // En este punto, el middleware authorizeRoles ya validó que req.user.rol sea 'proveedor'.
+        if (req.user.rol === 'proveedor' && req.user.id !== parseInt(id)) {
+            return res.status(403).json({ message: 'Acceso denegado. No tiene permiso para ver esta información.' });
+        }
+        const cantidad = await proveedorService.obtenerCantidadProductosPorProveedor(id);
+        res.status(200).json({ cantidadProductos: cantidad });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// Para obtener la cantidad de pedidos por proveedor
+exports.getCantidadPedidos = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (req.user.rol === 'proveedor' && req.user.id !== parseInt(id)) {
+            return res.status(403).json({ message: 'Acceso denegado. No tiene permiso para ver esta información.' });
+        }
+        const cantidad = await proveedorService.obtenerCantidadPedidosPorProveedor(id);
+        res.status(200).json({ cantidadPedidos: cantidad });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// Para obtener las ganancias totales por proveedor
+exports.getGanancias = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (req.user.rol === 'proveedor' && req.user.id !== parseInt(id)) {
+            return res.status(403).json({ message: 'Acceso denegado. No tiene permiso para ver esta información.' });
+        }
+        const ganancias = await proveedorService.obtenerGananciasPorProveedor(id);
+        res.status(200).json({ gananciasTotales: ganancias });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+};

@@ -15,4 +15,11 @@ router.get('/obtener/:id', authenticateJWT, authorizeRoles(['proveedor', 'client
 router.put('/actualizar/:id', authenticateJWT, authorizeRoles(['proveedor']), proveedorController.actualizarProveedor);
 router.delete('/eliminar/:id', authenticateJWT, authorizeRoles(['proveedor']), proveedorController.eliminarProveedor);
 
+// ==================== RUTAS PARA ESTADÍSTICAS DEL DASHBOARD ====================
+// Estas rutas son específicas para que un PROVEEDOR acceda a SUS PROPIAS estadísticas.
+// Por lo tanto, el ID en la URL debe coincidir con el ID del proveedor autenticado.
+router.get('/:id/productos/cantidad', authenticateJWT, authorizeRoles(['proveedor']), proveedorController.getCantidadProductos);
+router.get('/:id/pedidos/cantidad', authenticateJWT, authorizeRoles(['proveedor']), proveedorController.getCantidadPedidos);
+router.get('/:id/pedidos/ganancias', authenticateJWT, authorizeRoles(['proveedor']), proveedorController.getGanancias);
+
 module.exports = router;

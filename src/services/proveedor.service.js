@@ -1,6 +1,11 @@
 const Proveedor = require('../models/proveedor.model'); // Modelo de Proveedor
 const bcrypt = require('bcryptjs'); // Encriptación de contraseñas
 
+// ==================== IMPORTACIONES PARA LAS ESTADÍSTICAS ====================
+const Producto = require('../models/producto.model');
+const Pedido = require('../models/pedido.model');
+// ====================================================================================
+
 // =================== SERVICIOS DE PROVEEDOR ===================
 // Crear un proveedor
 exports.crearProveedor = async (nombre_proveedor, apellido_proveedor, correo_proveedor, celular_proveedor, contrasena) => {
@@ -108,5 +113,46 @@ exports.eliminarProveedor = async (id_proveedor) => {
         return { message: 'Proveedor eliminado correctamente.' };
     } catch (err) {
         throw new Error(`Error al eliminar el proveedor: ${err.message}`);
+    }
+};
+
+// ==================== FUNCIONES PARA ESTADÍSTICAS DEL DASHBOARD ====================
+// Función para obtener la cantidad de productos de un proveedor
+exports.obtenerCantidadProductosPorProveedor = async (id_proveedor) => {
+    try {
+        // Contar la cantidad de productos asociados al proveedor
+        const cantidad = await Producto.count({
+            where: { id_proveedor: id_proveedor }
+        });
+        return cantidad;
+    } catch (err) {
+        throw new Error(`Error al obtener la cantidad de productos: ${err.message}`);
+    }
+};
+
+// Función para obtener la cantidad de pedidos asignados a un proveedor
+exports.obtenerCantidadPedidosPorProveedor = async (id_proveedor) => {
+    try {
+        // Contar la cantidad de pedidos asociados al proveedor
+        const cantidad = await Pedido.count({
+            where: { id_proveedor: id_proveedor }
+        });
+        return cantidad;
+    } catch (err) {
+        throw new Error(`Error al obtener la cantidad de pedidos: ${err.message}`);
+    }
+};
+
+// Función para obtener las ganancias totales por pedidos de un proveedor
+exports.obtenerGananciasPorProveedor = async (id_proveedor) => {
+    try {
+        // Sumatoria de las ganancias de los pedidos asociados al proveedor
+        const resultado = await Pedido.sum('preciototal_pedido', {
+            where: { id_proveedor: id_proveedor }
+        });
+        // Si no hay pedidos, sum devuelve null, por lo que se convierte a 0
+        return resultado || 0;
+    } catch (err) {
+        throw new Error(`Error al obtener las ganancias por pedidos: ${err.message}`);
     }
 };
