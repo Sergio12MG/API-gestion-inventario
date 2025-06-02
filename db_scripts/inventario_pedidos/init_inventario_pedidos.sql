@@ -23,7 +23,7 @@ CREATE TABLE producto (
     id_producto SERIAL PRIMARY KEY,
     nombre_producto VARCHAR(255) NOT NULL,
     descripcion_producto TEXT,
-    imagen_producto VARCHAR(255), -- Podría ser un URL a una imagen
+    imagen_producto VARCHAR(255),
     cantidad_producto INTEGER NOT NULL DEFAULT 0 CHECK (cantidad_producto >= 0),
     preciounitario_producto DECIMAL(10, 2) NOT NULL CHECK (preciounitario_producto >= 0),
     id_categoria INTEGER NOT NULL,

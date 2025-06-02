@@ -58,25 +58,8 @@ Producto.hasMany(DetallePedido, {
 // para facilitar las consultas, pero no crean restricciones de FK en la BD.
 // =========================================================================
 
-// Pedido - Cliente (Pedido tiene un Cliente - Cliente está en usuarios_db)
-// Pedido.belongsTo(Cliente, { foreignKey: 'id_cliente', targetKey: 'id_cliente', as: 'cliente' });
-// Cliente.hasMany(Pedido, { foreignKey: 'id_cliente', as: 'pedidos' });
-
-// Pedido - Proveedor (Pedido tiene un Proveedor - Proveedor está en usuarios_db)
-// Pedido.belongsTo(Proveedor, { foreignKey: 'id_proveedor', targetKey: 'id_proveedor', as: 'proveedor' });
-// Proveedor.hasMany(Pedido, { foreignKey: 'id_proveedor', as: 'pedidos' });
-
-// Producto - Proveedor (Producto tiene un Proveedor - Proveedor está en usuarios_db)
-// Producto.belongsTo(Proveedor, { foreignKey: 'id_proveedor', targetKey: 'id_proveedor', as: 'proveedor' });
-// Proveedor.hasMany(Producto, { foreignKey: 'id_proveedor', as: 'productos' });
-
 // Nota: Las asociaciones entre diferentes instancias de Sequelize (diferentes bases de datos)
 // son más complejas y no se pueden definir directamente con `belongsTo`/`hasMany` de Sequelize
 // en la forma tradicional porque las bases de datos no tienen conocimiento una de la otra.
-// Si las líneas comentadas arriba fueron la causa del problema, entonces el enfoque de
-// cargar solo los modelos de `inventario_pedidos_db` en este archivo `associations.js`
-// para las FK *físicas* dentro de esa DB es lo correcto.
 // Las "asociaciones lógicas" (cross-database) se manejan a nivel de servicio/controlador,
 // haciendo consultas separadas o uniendo datos en la lógica de la aplicación.
-// Dado que `producto.model.js` tiene `id_proveedor` sin `references`, esto confirma
-// que es una FK lógica.
