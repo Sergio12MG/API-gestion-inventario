@@ -14,7 +14,8 @@ const DetallePedido = require('./detalle_pedido.model');
 // Un producto pertenece a una categoría. Una categoría puede tener muchos productos.
 Producto.belongsTo(Categoria, {
     foreignKey: 'id_categoria',
-    targetKey: 'id_categoria'
+    targetKey: 'id_categoria',
+    as: 'Categoria'
 });
 Categoria.hasMany(Producto, {
     foreignKey: 'id_categoria'
