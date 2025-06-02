@@ -42,8 +42,8 @@ services:
     container_name: sistema_gestion_inventario_api
     ports:
       - "3000:3000"
-    env_file: # Add this line
-      - ./.env # Path to your .env file
+    env_file:
+      - ./.env
     environment:
       DB_USUARIOS_HOST: usuarios_db
       DB_USUARIOS_PORT: 5432
