@@ -151,3 +151,13 @@ exports.eliminarPedido = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
+
+// Obtener la lista de estados
+exports.obtenerListaEstados = async (req, res) => {
+    try {
+        const estados = await pedidoService.obtenerEstados();
+        res.status(200).json(estados);
+    } catch (err) {
+        res.status(500).json({ message: `Error al obtener la lista de estados: ${err.message}` });
+    }
+};

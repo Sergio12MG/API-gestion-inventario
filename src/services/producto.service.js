@@ -48,7 +48,7 @@ exports.obtenerProductos = async (filtros = {}) => {
         if (filtros.id_categoria) {
             whereClause.id_categoria = filtros.id_categoria;
         }
-        if (filtros.proveedor) {
+        if (filtros.id_proveedor) {
             whereClause.id_proveedor = filtros.id_proveedor;
         }
         // Filtro por nombre de producto (búsqueda parcial insensible a mayúsculas/minúsculas)

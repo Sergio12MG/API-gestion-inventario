@@ -19,4 +19,7 @@ router.put('/actualizar/:id', authenticateJWT, authorizeRoles(['proveedor']), pe
 // Eliminar un pedido (solo para clientes)
 router.delete('/eliminar/:id', authenticateJWT, authorizeRoles(['cliente']), pedidoController.eliminarPedido);
 
+// Obtener todos los estados de pedido (para dropdowns, etc. y permitido para ambos roles)
+router.get('/estados/todos', authenticateJWT, authorizeRoles(['proveedor', 'cliente']), pedidoController.obtenerListaEstados);
+
 module.exports = router;
