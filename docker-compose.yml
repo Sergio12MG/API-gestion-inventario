@@ -24,7 +24,7 @@ services:
     container_name: inventario_db_container
     environment:
       POSTGRES_DB: inventario_pedidos_db
-      POSTGRES_USER: postgres
+      POSTGRES_USER: sergi
       POSTGRES_PASSWORD: siberia
     ports:
       - "5433:5432" # Puerto diferente para la DB de inventario/pedidos en el host
@@ -32,7 +32,7 @@ services:
       - inventario_pedidos_db_data:/var/lib/postgresql/data
       - ./db_scripts/inventario_pedidos:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d inventario_pedidos_db"]
+      test: ["CMD-SHELL", "pg_isready -U sergi -d inventario_pedidos_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -54,7 +54,7 @@ services:
       DB_INVENTARIO_PEDIDOS_HOST: inventario_pedidos_db
       DB_INVENTARIO_PEDIDOS_PORT: 5432
       DB_INVENTARIO_PEDIDOS_NAME: inventario_pedidos_db
-      DB_INVENTARIO_PEDIDOS_USER: postgres
+      DB_INVENTARIO_PEDIDOS_USER: sergi
       DB_INVENTARIO_PEDIDOS_PASSWORD: siberia
 
       PORT: 3000
