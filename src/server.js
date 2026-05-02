@@ -22,6 +22,7 @@ require('./models/associations');
 // Configuración para servir la aplicación Vue (frontend)
 // ======================================================
 // 1. Servir los archivos estáticos de la aplicación Vue
+/*
 const frontendPath = path.join(__dirname, '..', 'frontend-inventario-pedidos', 'dist');
 app.use(express.static(frontendPath));
 
@@ -30,6 +31,7 @@ app.use(express.static(frontendPath));
 app.get('*', (req, res) => {
     res.sendFile(path.join(frontendPath, 'index.html'));
 });
+*/
 
 // ======================================================
 // Configuración para iniciar el servidor de Express

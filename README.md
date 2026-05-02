@@ -14,7 +14,7 @@ Dentro de esos contenedores pueden ejecutarse las querys SQL normalmente.
 Para salir: \q
 
 
-docker-compose down --volumes # Para asegurarse de que no hay contenedores antiguos o volúmenes de datos que interfieran
 docker-compose up --build    # Construye las imágenes y levanta los servicios
+docker-compose down --volumes # Para asegurarse de que no hay contenedores antiguos o volúmenes de datos que interfieran
 
 npm run serve # Para iniciar el servidor de Vue
