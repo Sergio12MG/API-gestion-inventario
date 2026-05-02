@@ -1,0 +1,66 @@
+# Define las etapas del pipeline
+stages:
+  - validate
+
+# Job principal de validación
+validate:
+  stage: validate
+  image: node:20-alpine
+
+  # Servicios de PostgreSQL
+  services:
+    # Primera instancia (puerto 5432 por defecto)
+    - name: postgres:15
+      alias: pg1
+      variables:
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: ${DB_USUARIOS_PASSWORD}
+        POSTGRES_DB: app_db1
+    
+    # Segunda instancia (puerto 5433)
+    - name: postgres:15
+      alias: pg2
+      variables:
+        POSTGRES_USER: sergi
+        POSTGRES_PASSWORD: ${DB_INVENTARIO_PEDIDOS_PASSWORD}
+      # Fuerza al segundo PostgreSQL a escuchar en el puerto 5433
+      command: ["postgres", "-c", "port=5433", "-c", "listen_addresses=*"]
+
+  # Variables de entorno expuestas al contenedor del job
+  variables:
+    NODE_ENV: test
+    DB1_URL: "postgresql://postgres:ci_secure_pass@pg1:5432/app_db1"
+    DB2_URL: "postgresql://sergi:ci_secure_pass@pg2:5433/app_db2"
+
+  before_script:
+    # Instalación limpia y reproducible
+    - npm ci
+    
+    # Herramienta para verificar disponibilidad de PostgreSQL
+    - apk add --no-cache postgresql-client
+    
+    # Esperar a que ambas instancias estén listas (reintentos cada 2s)
+    - until pg_isready -h pg1 -p 5432 -U postgres; do sleep 2; done
+    - until pg_isready -h pg2 -p 5433 -U sergi; do sleep 2; done
+    
+    # Ejecutar migraciones o seed de prueba
+    - npm run db:migrate || echo "⚠️ No se encontraron migraciones"
+
+  script:
+    # 1. Linting
+    - npm run lint
+    
+    # 2. Tests con reporte JUnit y cobertura
+    # (El flag --reporter depende de tu framework: Jest, Mocha, Vitest, etc.)
+    - npm run test -- --reporter=junit --reporter-options output=junit-report.xml
+
+  artifacts:
+    when: always
+    reports:
+      junit: junit-report.xml
+      # eslint: eslint-report.json
+    paths:
+      - coverage/
+    
+  # Expresión regular para extraer cobertura
+  coverage: '/Lines\s*:\s*(\d+\.\d+)%/'
