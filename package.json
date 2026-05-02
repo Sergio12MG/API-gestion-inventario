@@ -5,7 +5,9 @@
   "main": "./src/server.js",
   "scripts": {
     "dev": "nodemon -e ./src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "jest",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -22,7 +24,20 @@
     "sequelize": "^6.37.6"
   },
   "devDependencies": {
+    "jest-junit": "^17.0.0",
     "nodemon": "^3.1.9",
     "typescript": "^5.8.3"
+  },
+  "jest": {
+    "reporters": [
+      "default",
+      [
+        "jest-junit",
+        {
+          "outputDirectory": "test-results",
+          "outputName": "junit.xml"
+        }
+      ]
+    ]
   }
 }
